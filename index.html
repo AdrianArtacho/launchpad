@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sample Rack</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #111;
+      color: white;
+      margin: 0;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 1rem;
+    }
+
+    #rack {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 1rem;
+    }
+
+    button {
+      aspect-ratio: 1 / 1;
+      border: none;
+      border-radius: 16px;
+      background: #2a2a2a;
+      color: white;
+      font-size: 0.9rem;
+      padding: 1rem;
+      cursor: pointer;
+      box-shadow: 0 4px 12px #0008;
+    }
+
+    button:active,
+    button.playing {
+      background: #666;
+      transform: scale(0.97);
+    }
+
+    .error {
+      color: #ff8080;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sample Rack</h1>
+  <div id="rack">Loading samples...</div>
+
+  <script>
+    const owner = "AdrianArtacho";
+    const repo = "launchpad";
+    const branch = "main";
+    const samplesPath = "samples";
+
+    const audioExtensions = [".wav", ".mp3", ".ogg", ".m4a", ".flac", ".aiff"];
+
+    async function loadSamples() {
+      const rack = document.getElementById("rack");
+
+      const apiUrl =
+        `https://api.github.com/repos/${owner}/${repo}/contents/${samplesPath}?ref=${branch}`;
+
+      try {
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error("Could not read samples folder.");
+
+        const files = await response.json();
+
+        const samples = files
+          .filter(file =>
+            file.type === "file" &&
+            audioExtensions.some(ext => file.name.toLowerCase().endsWith(ext))
+          )
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        rack.innerHTML = "";
+
+        if (samples.length === 0) {
+          rack.innerHTML = "<p>No audio files found in samples/.</p>";
+          return;
+        }
+
+        samples.forEach((file, index) => {
+          const label = file.name.replace(/\.[^/.]+$/, "");
+          const audio = new Audio(file.download_url);
+          audio.preload = "auto";
+
+          const button = document.createElement("button");
+          button.textContent = label;
+
+          button.addEventListener("click", () => {
+            audio.currentTime = 0;
+            audio.play();
+
+            button.classList.add("playing");
+            setTimeout(() => button.classList.remove("playing"), 120);
+          });
+
+          rack.appendChild(button);
+        });
+
+      } catch (err) {
+        rack.innerHTML = `<p class="error">${err.message}</p>`;
+      }
+    }
+
+    loadSamples();
+  </script>
+</body>
+</html>
