@@ -1,6 +1,6 @@
 # Launchpad
 
-A lightweight browser-based sample rack) for [sharing collections]([url](https://adrianartacho.github.io/launchpad/?title=Tuishi%20Pamoja&folder=pamoja)) of audio samples.
+A lightweight browser-based sample rack) for [sharing collections](https://adrianartacho.github.io/launchpad/?title=Tuishi%20Pamoja&folder=pamoja) of audio samples.
 
 Simply upload audio files to a GitHub repository, enable GitHub Pages, and share a URL. Visitors can trigger samples directly from their browser without installing Ableton Live or any other software.
 
