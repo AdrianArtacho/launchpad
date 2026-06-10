@@ -13,9 +13,17 @@
       padding: 2rem;
     }
 
+    header {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
     h1 {
       font-size: 1.4rem;
-      margin-bottom: 1rem;
+      margin: 0;
     }
 
     #rack {
@@ -25,7 +33,6 @@
     }
 
     button {
-      aspect-ratio: 1 / 1;
       border: none;
       border-radius: 16px;
       background: #2a2a2a;
@@ -36,10 +43,20 @@
       box-shadow: 0 4px 12px #0008;
     }
 
+    .pad {
+      aspect-ratio: 1 / 1;
+    }
+
     button:active,
     button.playing {
       background: #666;
       transform: scale(0.97);
+    }
+
+    #stopAll {
+      aspect-ratio: auto;
+      background: #5a1f1f;
+      white-space: nowrap;
     }
 
     .error {
@@ -48,16 +65,55 @@
   </style>
 </head>
 <body>
-  <h1>Sample Rack</h1>
+  <header>
+    <h1 id="title">Sample Rack</h1>
+    <button id="stopAll">Stop all</button>
+  </header>
+
   <div id="rack">Loading samples...</div>
 
   <script>
     const owner = "AdrianArtacho";
     const repo = "launchpad";
     const branch = "main";
-    const samplesPath = "samples";
+
+    const params = new URLSearchParams(window.location.search);
+
+    const rackTitle = params.get("title") || "Sample Rack";
+    const folder = params.get("folder") || "samples";
+
+    document.title = rackTitle;
+    document.getElementById("title").textContent = rackTitle;
+
+    const samplesPath = folder.startsWith("samples")
+      ? folder
+      : `samples/${folder}`;
 
     const audioExtensions = [".wav", ".mp3", ".ogg", ".m4a", ".flac", ".aiff"];
+    const activeAudios = [];
+
+    document.getElementById("stopAll").addEventListener("click", stopAllSamples);
+
+    function stopAllSamples() {
+      activeAudios.forEach(audio => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+
+      document.querySelectorAll(".playing").forEach(button => {
+        button.classList.remove("playing");
+      });
+    }
+
+    async function requestFullscreenOnce() {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch (err) {
+        // Browsers only allow fullscreen after user interaction.
+      }
+    }
 
     async function loadSamples() {
       const rack = document.getElementById("rack");
@@ -67,7 +123,7 @@
 
       try {
         const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error("Could not read samples folder.");
+        if (!response.ok) throw new Error(`Could not read ${samplesPath}/`);
 
         const files = await response.json();
 
@@ -81,24 +137,28 @@
         rack.innerHTML = "";
 
         if (samples.length === 0) {
-          rack.innerHTML = "<p>No audio files found in samples/.</p>";
+          rack.innerHTML = `<p>No audio files found in ${samplesPath}/.</p>`;
           return;
         }
 
-        samples.forEach((file, index) => {
-          const label = file.name.replace(/\.[^/.]+$/, "");
+        samples.forEach(file => {
+          const label = decodeURIComponent(file.name.replace(/\.[^/.]+$/, ""));
           const audio = new Audio(file.download_url);
           audio.preload = "auto";
+          activeAudios.push(audio);
 
           const button = document.createElement("button");
+          button.className = "pad";
           button.textContent = label;
 
-          button.addEventListener("click", () => {
+          button.addEventListener("click", async () => {
+            await requestFullscreenOnce();
+
             audio.currentTime = 0;
             audio.play();
 
             button.classList.add("playing");
-            setTimeout(() => button.classList.remove("playing"), 120);
+            audio.onended = () => button.classList.remove("playing");
           });
 
           rack.appendChild(button);
