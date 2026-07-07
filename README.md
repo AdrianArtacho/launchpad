@@ -136,3 +136,8 @@ The application discovers samples through the GitHub API. Therefore:
 ## License
 
 MIT License
+
+---
+
+## [ToDo](https://trello.com/c/0g6VE3OI/266-launchpad)
+
