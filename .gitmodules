@@ -1,0 +1,3 @@
+[submodule "samples/Venedig-samples"]
+	path = samples/Venedig-samples
+	url = https://github.com/AdrianArtacho/Venedig-samples.git

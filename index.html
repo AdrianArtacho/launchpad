@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <title>Sample Rack</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -62,37 +63,119 @@
     .error {
       color: #ff8080;
     }
+
+    .info {
+      color: #aaa;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      overflow-wrap: anywhere;
+    }
   </style>
 </head>
+
 <body>
   <header>
     <h1 id="title">Sample Rack</h1>
     <button id="stopAll">Stop all</button>
   </header>
 
+  <div id="sourceInfo" class="info"></div>
   <div id="rack">Loading samples...</div>
 
   <script>
-    const owner = "AdrianArtacho";
-    const repo = "launchpad";
-    const branch = "main";
-
     const params = new URLSearchParams(window.location.search);
 
-    const rackTitle = params.get("title") || "Sample Rack";
-    const folder = params.get("folder") || "samples";
+    /*
+     * Default repository used when no ?repo= parameter is supplied.
+     */
+    const defaultRepositoryUrl =
+      "https://github.com/AdrianArtacho/launchpad";
+
+    const defaultBranch = "main";
+    const defaultFolder = "samples";
+
+    const repositoryUrl =
+      params.get("repo") || defaultRepositoryUrl;
+
+    const branch =
+      params.get("branch") || defaultBranch;
+
+    const folder =
+      params.get("folder") || defaultFolder;
+
+    const rackTitle =
+      params.get("title") || "Sample Rack";
 
     document.title = rackTitle;
     document.getElementById("title").textContent = rackTitle;
 
-    const samplesPath = folder.startsWith("samples")
-      ? folder
-      : `samples/${folder}`;
+    const audioExtensions = [
+      ".wav",
+      ".mp3",
+      ".ogg",
+      ".m4a",
+      ".flac",
+      ".aiff",
+      ".aif"
+    ];
 
-    const audioExtensions = [".wav", ".mp3", ".ogg", ".m4a", ".flac", ".aiff"];
     const activeAudios = [];
 
-    document.getElementById("stopAll").addEventListener("click", stopAllSamples);
+    document
+      .getElementById("stopAll")
+      .addEventListener("click", stopAllSamples);
+
+    function parseGitHubRepositoryUrl(url) {
+      let parsedUrl;
+
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        throw new Error(
+          `Invalid repository URL: ${url}`
+        );
+      }
+
+      const hostname = parsedUrl.hostname.toLowerCase();
+
+      if (
+        hostname !== "github.com" &&
+        hostname !== "www.github.com"
+      ) {
+        throw new Error(
+          "The repository URL must be a public GitHub repository."
+        );
+      }
+
+      const pathParts = parsedUrl.pathname
+        .replace(/^\/+|\/+$/g, "")
+        .split("/")
+        .filter(Boolean);
+
+      if (pathParts.length < 2) {
+        throw new Error(
+          "The GitHub URL must contain both an owner and a repository name."
+        );
+      }
+
+      const owner = pathParts[0];
+
+      const repo = pathParts[1]
+        .replace(/\.git$/i, "");
+
+      return {
+        owner,
+        repo
+      };
+    }
+
+    function encodeRepositoryPath(path) {
+      return path
+        .split("/")
+        .filter(Boolean)
+        .map(segment => encodeURIComponent(segment))
+        .join("/");
+    }
 
     function stopAllSamples() {
       activeAudios.forEach(audio => {
@@ -100,9 +183,11 @@
         audio.currentTime = 0;
       });
 
-      document.querySelectorAll(".playing").forEach(button => {
-        button.classList.remove("playing");
-      });
+      document
+        .querySelectorAll(".playing")
+        .forEach(button => {
+          button.classList.remove("playing");
+        });
     }
 
     async function requestFullscreenOnce() {
@@ -110,44 +195,107 @@
         if (!document.fullscreenElement) {
           await document.documentElement.requestFullscreen();
         }
-      } catch (err) {
-        // Browsers only allow fullscreen after user interaction.
+      } catch {
+        /*
+         * Some browsers deny fullscreen or do not support it.
+         */
       }
     }
 
     async function loadSamples() {
       const rack = document.getElementById("rack");
-
-      const apiUrl =
-        `https://api.github.com/repos/${owner}/${repo}/contents/${samplesPath}?ref=${branch}`;
+      const sourceInfo = document.getElementById("sourceInfo");
 
       try {
-        const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error(`Could not read ${samplesPath}/`);
+        const { owner, repo } =
+          parseGitHubRepositoryUrl(repositoryUrl);
+
+        const samplesPath =
+          encodeRepositoryPath(folder);
+
+        const encodedBranch =
+          encodeURIComponent(branch);
+
+        const apiUrl = samplesPath
+          ? `https://api.github.com/repos/${owner}/${repo}/contents/${samplesPath}?ref=${encodedBranch}`
+          : `https://api.github.com/repos/${owner}/${repo}/contents?ref=${encodedBranch}`;
+
+        sourceInfo.textContent =
+          `${owner}/${repo} · ${folder || "/"} · ${branch}`;
+
+        const response = await fetch(apiUrl, {
+          headers: {
+            Accept: "application/vnd.github+json"
+          }
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error(
+              `Could not find "${folder}" in ${owner}/${repo} on branch "${branch}".`
+            );
+          }
+
+          if (response.status === 403) {
+            throw new Error(
+              "GitHub API request limit reached. Please try again later."
+            );
+          }
+
+          throw new Error(
+            `GitHub returned error ${response.status}.`
+          );
+        }
 
         const files = await response.json();
+
+        if (!Array.isArray(files)) {
+          throw new Error(
+            `"${folder}" is not a folder.`
+          );
+        }
 
         const samples = files
           .filter(file =>
             file.type === "file" &&
-            audioExtensions.some(ext => file.name.toLowerCase().endsWith(ext))
+            audioExtensions.some(extension =>
+              file.name
+                .toLowerCase()
+                .endsWith(extension)
+            )
           )
-          .sort((a, b) => a.name.localeCompare(b.name));
+          .sort((a, b) =>
+            a.name.localeCompare(
+              b.name,
+              undefined,
+              {
+                numeric: true,
+                sensitivity: "base"
+              }
+            )
+          );
 
         rack.innerHTML = "";
 
         if (samples.length === 0) {
-          rack.innerHTML = `<p>No audio files found in ${samplesPath}/.</p>`;
+          rack.innerHTML =
+            `<p>No supported audio files found in ${folder || "/"}.</p>`;
           return;
         }
 
         samples.forEach(file => {
-          const label = decodeURIComponent(file.name.replace(/\.[^/.]+$/, ""));
+          const label = decodeURIComponent(
+            file.name.replace(/\.[^/.]+$/, "")
+          );
+
           const audio = new Audio(file.download_url);
           audio.preload = "auto";
+
           activeAudios.push(audio);
 
-          const button = document.createElement("button");
+          const button =
+            document.createElement("button");
+
           button.className = "pad";
           button.textContent = label;
 
@@ -155,17 +303,35 @@
             await requestFullscreenOnce();
 
             audio.currentTime = 0;
-            audio.play();
 
-            button.classList.add("playing");
-            audio.onended = () => button.classList.remove("playing");
+            try {
+              await audio.play();
+              button.classList.add("playing");
+            } catch (error) {
+              console.error(
+                `Could not play ${file.name}:`,
+                error
+              );
+            }
+          });
+
+          audio.addEventListener("ended", () => {
+            button.classList.remove("playing");
+          });
+
+          audio.addEventListener("pause", () => {
+            if (audio.currentTime === 0) {
+              button.classList.remove("playing");
+            }
           });
 
           rack.appendChild(button);
         });
 
-      } catch (err) {
-        rack.innerHTML = `<p class="error">${err.message}</p>`;
+      } catch (error) {
+        sourceInfo.textContent = "";
+        rack.innerHTML =
+          `<p class="error">${error.message}</p>`;
       }
     }
 
