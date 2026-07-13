@@ -92,7 +92,8 @@
       "https://github.com/AdrianArtacho/launchpad";
 
     const defaultBranch = "main";
-    const defaultFolder = "samples";
+    // const defaultFolder = "samples";
+    const defaultFolder = "";
 
     const repositoryUrl =
       params.get("repo") || defaultRepositoryUrl;
@@ -131,9 +132,7 @@
       try {
         parsedUrl = new URL(url);
       } catch {
-        throw new Error(
-          `Invalid repository URL: ${url}`
-        );
+        throw new Error(`Invalid repository URL: ${url}`);
       }
 
       const hostname = parsedUrl.hostname.toLowerCase();
@@ -159,13 +158,16 @@
       }
 
       const owner = pathParts[0];
+      const repo = pathParts[1].replace(/\.git$/i, "");
 
-      const repo = pathParts[1]
-        .replace(/\.git$/i, "");
+      const folder = pathParts
+        .slice(2)
+        .join("/");
 
       return {
         owner,
-        repo
+        repo,
+        folder
       };
     }
 
@@ -207,11 +209,19 @@
       const sourceInfo = document.getElementById("sourceInfo");
 
       try {
-        const { owner, repo } =
-          parseGitHubRepositoryUrl(repositoryUrl);
+        const {
+          owner,
+          repo,
+          folder: repositoryFolder
+        } = parseGitHubRepositoryUrl(repositoryUrl);
+
+        const requestedFolder =
+          params.has("folder")
+            ? params.get("folder")
+            : repositoryFolder;
 
         const samplesPath =
-          encodeRepositoryPath(folder);
+          encodeRepositoryPath(requestedFolder);
 
         const encodedBranch =
           encodeURIComponent(branch);
