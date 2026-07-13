@@ -4,6 +4,8 @@ A lightweight browser-based sample rack) for [sharing collections](https://adria
 
 Simply upload audio files to a GitHub repository, enable GitHub Pages, and share a URL. Visitors can trigger samples directly from their browser without installing Ableton Live or any other software.
 
+[→helper](https://adrianartacho.github.io/launchpad/helper.html)
+
 ## Features
 
 * Automatic generation of pads from files stored in a repository
