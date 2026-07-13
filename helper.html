@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Launchpad URL Helper</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #111;
+      color: #fff;
+      padding: 2rem;
+    }
+
+    main {
+      width: min(760px, 100%);
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+    }
+
+    p {
+      color: #bbb;
+      line-height: 1.5;
+    }
+
+    form {
+      display: grid;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    label {
+      display: grid;
+      gap: 0.45rem;
+      font-weight: 600;
+    }
+
+    .hint {
+      font-size: 0.85rem;
+      font-weight: 400;
+      color: #999;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid #444;
+      border-radius: 10px;
+      background: #1d1d1d;
+      color: #fff;
+      padding: 0.85rem 1rem;
+      font: inherit;
+    }
+
+    input:focus {
+      outline: 2px solid #777;
+      outline-offset: 2px;
+    }
+
+    .output {
+      margin-top: 2rem;
+      padding: 1rem;
+      border-radius: 14px;
+      background: #1b1b1b;
+      border: 1px solid #333;
+    }
+
+    .output label {
+      margin-bottom: 0.65rem;
+    }
+
+    #generatedUrl {
+      min-height: 7rem;
+      resize: vertical;
+      width: 100%;
+      border: 1px solid #444;
+      border-radius: 10px;
+      background: #0d0d0d;
+      color: #fff;
+      padding: 1rem;
+      font: 0.9rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    button,
+    .button-link {
+      border: none;
+      border-radius: 10px;
+      padding: 0.8rem 1rem;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    button {
+      background: #eee;
+      color: #111;
+    }
+
+    .button-link {
+      background: #2d2d2d;
+      color: #fff;
+    }
+
+    button:hover,
+    .button-link:hover {
+      filter: brightness(1.12);
+    }
+
+    #status {
+      min-height: 1.4em;
+      margin-top: 0.75rem;
+      color: #aaa;
+      font-size: 0.9rem;
+    }
+
+    .error {
+      color: #ff8d8d !important;
+    }
+
+    .examples {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid #333;
+      font-size: 0.9rem;
+    }
+
+    code {
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>Launchpad URL Helper</h1>
+
+    <p>
+      Enter the public GitHub repository and the optional display settings.
+      The helper will generate a properly encoded URL that you can share.
+    </p>
+
+    <form id="urlForm">
+      <label>
+        Launchpad URL
+        <span class="hint">
+          The published address of your Launchpad page.
+        </span>
+        <input
+          id="launchpadUrl"
+          type="url"
+          required
+          autocomplete="url"
+        />
+      </label>
+
+      <label>
+        Public GitHub repository URL
+        <span class="hint">
+          You may include a folder directly in the URL, for example
+          https://github.com/User/Repo/samples/piano
+        </span>
+        <input
+          id="repoUrl"
+          type="url"
+          placeholder="https://github.com/AdrianArtacho/launchpad-samples"
+          required
+          autocomplete="url"
+        />
+      </label>
+
+      <label>
+        Title
+        <span class="hint">
+          Optional title displayed by the sample rack.
+        </span>
+        <input
+          id="title"
+          type="text"
+          placeholder="Sample Rack"
+        />
+      </label>
+
+      <label>
+        Folder override
+        <span class="hint">
+          Optional. This overrides any folder included in the repository URL.
+        </span>
+        <input
+          id="folder"
+          type="text"
+          placeholder="samples/panoja"
+        />
+      </label>
+
+      <label>
+        Branch
+        <span class="hint">
+          Optional. Leave empty to use the Launchpad default, usually main.
+        </span>
+        <input
+          id="branch"
+          type="text"
+          placeholder="main"
+        />
+      </label>
+    </form>
+
+    <section class="output">
+      <label for="generatedUrl">Shareable URL</label>
+
+      <textarea
+        id="generatedUrl"
+        readonly
+        spellcheck="false"
+      ></textarea>
+
+      <div class="actions">
+        <button id="copyButton" type="button">Copy URL</button>
+        <a
+          id="openButton"
+          class="button-link"
+          href="#"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open Launchpad
+        </a>
+      </div>
+
+      <div id="status" aria-live="polite"></div>
+    </section>
+
+    <section class="examples">
+      <p>
+        The generated address may look more heavily encoded than a hand-written
+        URL. This is intentional and prevents characters inside the repository
+        URL from interfering with the Launchpad query parameters.
+      </p>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("urlForm");
+    const launchpadUrlInput = document.getElementById("launchpadUrl");
+    const repoUrlInput = document.getElementById("repoUrl");
+    const titleInput = document.getElementById("title");
+    const folderInput = document.getElementById("folder");
+    const branchInput = document.getElementById("branch");
+
+    const generatedUrlOutput = document.getElementById("generatedUrl");
+    const copyButton = document.getElementById("copyButton");
+    const openButton = document.getElementById("openButton");
+    const status = document.getElementById("status");
+
+    function inferLaunchpadUrl() {
+      const current = new URL(window.location.href);
+
+      current.search = "";
+      current.hash = "";
+
+      if (current.pathname.endsWith("/helper.html")) {
+        current.pathname = current.pathname.replace(/helper\.html$/, "");
+      } else {
+        current.pathname = current.pathname.replace(/[^/]*$/, "");
+      }
+
+      return current.toString();
+    }
+
+    function normalizeLaunchpadUrl(value) {
+      const url = new URL(value);
+
+      url.search = "";
+      url.hash = "";
+
+      return url;
+    }
+
+    function validateGitHubUrl(value) {
+      const url = new URL(value);
+      const hostname = url.hostname.toLowerCase();
+
+      if (hostname !== "github.com" && hostname !== "www.github.com") {
+        throw new Error("Please enter a public github.com repository URL.");
+      }
+
+      const parts = url.pathname
+        .replace(/^\/+|\/+$/g, "")
+        .split("/")
+        .filter(Boolean);
+
+      if (parts.length < 2) {
+        throw new Error(
+          "The GitHub URL must include both an owner and a repository."
+        );
+      }
+
+      return url.toString().replace(/\/$/, "");
+    }
+
+    function generateUrl() {
+      status.textContent = "";
+      status.classList.remove("error");
+
+      try {
+        const launchpadUrl = normalizeLaunchpadUrl(
+          launchpadUrlInput.value.trim()
+        );
+
+        const repoUrl = repoUrlInput.value.trim();
+
+        if (!repoUrl) {
+          generatedUrlOutput.value = "";
+          openButton.href = "#";
+          return;
+        }
+
+        const validatedRepoUrl = validateGitHubUrl(repoUrl);
+
+        launchpadUrl.searchParams.set("repo", validatedRepoUrl);
+
+        const title = titleInput.value.trim();
+        const folder = folderInput.value.trim();
+        const branch = branchInput.value.trim();
+
+        if (title) {
+          launchpadUrl.searchParams.set("title", title);
+        }
+
+        if (folder) {
+          launchpadUrl.searchParams.set("folder", folder);
+        }
+
+        if (branch) {
+          launchpadUrl.searchParams.set("branch", branch);
+        }
+
+        const generatedUrl = launchpadUrl.toString();
+
+        generatedUrlOutput.value = generatedUrl;
+        openButton.href = generatedUrl;
+      } catch (error) {
+        generatedUrlOutput.value = "";
+        openButton.href = "#";
+        status.textContent = error.message;
+        status.classList.add("error");
+      }
+    }
+
+    async function copyGeneratedUrl() {
+      const value = generatedUrlOutput.value;
+
+      if (!value) {
+        status.textContent = "Enter a valid repository URL first.";
+        status.classList.add("error");
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(value);
+        status.textContent = "URL copied to the clipboard.";
+        status.classList.remove("error");
+      } catch {
+        generatedUrlOutput.focus();
+        generatedUrlOutput.select();
+
+        const copied = document.execCommand("copy");
+
+        status.textContent = copied
+          ? "URL copied to the clipboard."
+          : "Copy failed. Select and copy the URL manually.";
+
+        status.classList.toggle("error", !copied);
+      }
+    }
+
+    launchpadUrlInput.value = inferLaunchpadUrl();
+
+    form.addEventListener("input", generateUrl);
+    copyButton.addEventListener("click", copyGeneratedUrl);
+
+    openButton.addEventListener("click", event => {
+      if (!generatedUrlOutput.value) {
+        event.preventDefault();
+        status.textContent = "Enter a valid repository URL first.";
+        status.classList.add("error");
+      }
+    });
+
+    generateUrl();
+  </script>
+</body>
+</html>
