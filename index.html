@@ -63,13 +63,6 @@
     .error {
       color: #ff8080;
     }
-
-    .info {
-      color: #aaa;
-      margin-bottom: 1rem;
-      font-size: 0.85rem;
-      overflow-wrap: anywhere;
-    }
   </style>
 </head>
 
@@ -79,33 +72,22 @@
     <button id="stopAll">Stop all</button>
   </header>
 
-  <div id="sourceInfo" class="info"></div>
   <div id="rack">Loading samples...</div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
 
     /*
-     * Default repository used when no ?repo= parameter is supplied.
+     * Local/default repository.
+     * Used when no ?repo= parameter is supplied.
      */
-    const defaultRepositoryUrl =
-      "https://github.com/AdrianArtacho/launchpad";
-
+    const defaultOwner = "AdrianArtacho";
+    const defaultRepo = "launchpad";
     const defaultBranch = "main";
-    // const defaultFolder = "samples";
-    const defaultFolder = "";
 
-    const repositoryUrl =
-      params.get("repo") || defaultRepositoryUrl;
-
-    const branch =
-      params.get("branch") || defaultBranch;
-
-    const folder =
-      params.get("folder") || defaultFolder;
-
-    const rackTitle =
-      params.get("title") || "Sample Rack";
+    const repositoryUrl = params.get("repo");
+    const branch = params.get("branch") || defaultBranch;
+    const rackTitle = params.get("title") || "Sample Rack";
 
     document.title = rackTitle;
     document.getElementById("title").textContent = rackTitle;
@@ -157,17 +139,10 @@
         );
       }
 
-      const owner = pathParts[0];
-      const repo = pathParts[1].replace(/\.git$/i, "");
-
-      const folder = pathParts
-        .slice(2)
-        .join("/");
-
       return {
-        owner,
-        repo,
-        folder
+        owner: pathParts[0],
+        repo: pathParts[1].replace(/\.git$/i, ""),
+        folder: pathParts.slice(2).join("/")
       };
     }
 
@@ -198,27 +173,50 @@
           await document.documentElement.requestFullscreen();
         }
       } catch {
-        /*
-         * Some browsers deny fullscreen or do not support it.
-         */
+        // Fullscreen may be denied or unsupported.
       }
     }
 
     async function loadSamples() {
       const rack = document.getElementById("rack");
-      const sourceInfo = document.getElementById("sourceInfo");
 
       try {
-        const {
-          owner,
-          repo,
-          folder: repositoryFolder
-        } = parseGitHubRepositoryUrl(repositoryUrl);
+        let owner;
+        let repo;
+        let requestedFolder;
 
-        const requestedFolder =
-          params.has("folder")
+        if (repositoryUrl) {
+          /*
+           * External public repository:
+           * use the folder contained in the repo URL, unless ?folder=
+           * explicitly overrides it.
+           */
+          const parsedRepository =
+            parseGitHubRepositoryUrl(repositoryUrl);
+
+          owner = parsedRepository.owner;
+          repo = parsedRepository.repo;
+
+          requestedFolder = params.has("folder")
             ? params.get("folder")
-            : repositoryFolder;
+            : parsedRepository.folder;
+        } else {
+          /*
+           * Local/default Launchpad repository:
+           * always look inside samples/.
+           *
+           * ?folder=panoja becomes samples/panoja
+           * no folder parameter becomes samples
+           */
+          owner = defaultOwner;
+          repo = defaultRepo;
+
+          const localFolder = params.get("folder") || "";
+
+          requestedFolder = localFolder
+            ? `samples/${localFolder.replace(/^samples\/?/i, "")}`
+            : "samples";
+        }
 
         const samplesPath =
           encodeRepositoryPath(requestedFolder);
@@ -230,9 +228,6 @@
           ? `https://api.github.com/repos/${owner}/${repo}/contents/${samplesPath}?ref=${encodedBranch}`
           : `https://api.github.com/repos/${owner}/${repo}/contents?ref=${encodedBranch}`;
 
-        sourceInfo.textContent =
-          `${owner}/${repo} · ${folder || "/"} · ${branch}`;
-
         const response = await fetch(apiUrl, {
           headers: {
             Accept: "application/vnd.github+json"
@@ -242,7 +237,7 @@
         if (!response.ok) {
           if (response.status === 404) {
             throw new Error(
-              `Could not find "${folder}" in ${owner}/${repo} on branch "${branch}".`
+              `Could not find "${requestedFolder || "/"}" in ${owner}/${repo} on branch "${branch}".`
             );
           }
 
@@ -261,7 +256,7 @@
 
         if (!Array.isArray(files)) {
           throw new Error(
-            `"${folder}" is not a folder.`
+            `"${requestedFolder || "/"}" is not a folder.`
           );
         }
 
@@ -269,9 +264,7 @@
           .filter(file =>
             file.type === "file" &&
             audioExtensions.some(extension =>
-              file.name
-                .toLowerCase()
-                .endsWith(extension)
+              file.name.toLowerCase().endsWith(extension)
             )
           )
           .sort((a, b) =>
@@ -289,7 +282,7 @@
 
         if (samples.length === 0) {
           rack.innerHTML =
-            `<p>No supported audio files found in ${folder || "/"}.</p>`;
+            `<p>No supported audio files found in ${requestedFolder || "/"}.</p>`;
           return;
         }
 
@@ -339,7 +332,6 @@
         });
 
       } catch (error) {
-        sourceInfo.textContent = "";
         rack.innerHTML =
           `<p class="error">${error.message}</p>`;
       }
