@@ -139,5 +139,5 @@ MIT License
 
 ---
 
-## [ToDo](https://trello.com/c/0g6VE3OI/266-launchpad)
+## 📝[ToDo](https://trello.com/c/0g6VE3OI/266-launchpad)
 
