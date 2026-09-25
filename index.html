@@ -63,6 +63,10 @@
     .error {
       color: #ff8080;
     }
+
+    #status {
+      margin-top: 1rem;
+    }
   </style>
 </head>
 
@@ -73,6 +77,7 @@
   </header>
 
   <div id="rack">Loading samples...</div>
+  <div id="status" role="status" aria-live="polite"></div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
@@ -86,6 +91,8 @@
     const defaultBranch = "main";
 
     const repositoryUrl = params.get("repo");
+    const driveFolderUrl = params.get("drive");
+    const driveApiKey = params.get("driveKey");
     const branch = params.get("branch") || defaultBranch;
     const rackTitle = params.get("title") || "Sample Rack";
 
@@ -154,6 +161,107 @@
         .join("/");
     }
 
+    function parseDriveFolderUrl(value) {
+      let url;
+
+      try {
+        url = new URL(value);
+      } catch {
+        throw new Error("Enter a complete Google Drive folder URL.");
+      }
+
+      if (url.protocol !== "https:" || url.hostname !== "drive.google.com") {
+        throw new Error("The Drive source must be a drive.google.com folder link.");
+      }
+
+      const match = url.pathname.match(/^\/drive\/folders\/([\w-]+)\/?$/);
+
+      if (!match) {
+        throw new Error("The Drive link must point to a folder, not an individual file.");
+      }
+
+      return {
+        id: match[1],
+        resourceKey: url.searchParams.get("resourcekey")
+      };
+    }
+
+    async function listDriveSamples() {
+      if (!driveApiKey) {
+        throw new Error("A Drive API key is needed to list the folder. Use the URL helper to make a Drive link.");
+      }
+
+      const folder = parseDriveFolderUrl(driveFolderUrl);
+      const files = [];
+      let pageToken;
+
+      do {
+        const apiUrl = new URL("https://www.googleapis.com/drive/v3/files");
+        apiUrl.searchParams.set("q", `'${folder.id}' in parents and trashed = false`);
+        apiUrl.searchParams.set("fields", "nextPageToken,files(id,name,mimeType,resourceKey,webContentLink)");
+        apiUrl.searchParams.set("pageSize", "1000");
+        apiUrl.searchParams.set("supportsAllDrives", "true");
+        apiUrl.searchParams.set("includeItemsFromAllDrives", "true");
+        apiUrl.searchParams.set("key", driveApiKey);
+
+        if (pageToken) {
+          apiUrl.searchParams.set("pageToken", pageToken);
+        }
+
+        const headers = folder.resourceKey
+          ? { "X-Goog-Drive-Resource-Keys": `${folder.id}/${folder.resourceKey}` }
+          : {};
+        const response = await fetch(apiUrl, { headers });
+
+        if (!response.ok) {
+          throw new Error(
+            "Could not list this Drive folder. Check that it is shared with 'Anyone with the link', that the Drive API is enabled, and that the API key allows this site."
+          );
+        }
+
+        const result = await response.json();
+        files.push(...(result.files || []));
+        pageToken = result.nextPageToken;
+      } while (pageToken);
+
+      return files.map(file => {
+        const mediaUrl = new URL(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}`
+        );
+        mediaUrl.searchParams.set("alt", "media");
+        mediaUrl.searchParams.set("key", driveApiKey);
+        const viewUrl = new URL(
+          `https://drive.google.com/file/d/${encodeURIComponent(file.id)}/view`
+        );
+
+        if (file.resourceKey) {
+          viewUrl.searchParams.set("resourcekey", file.resourceKey);
+        }
+
+        return {
+          name: file.name,
+          type: "file",
+          // A link-shared file may need its resource key to be downloaded.
+          download_url: file.resourceKey && file.webContentLink
+            ? file.webContentLink
+            : mediaUrl.toString(),
+          view_url: viewUrl.toString()
+        };
+      });
+    }
+
+    function showMessage(message, isError = false) {
+      const rack = document.getElementById("rack");
+      const paragraph = document.createElement("p");
+      paragraph.textContent = message;
+
+      if (isError) {
+        paragraph.className = "error";
+      }
+
+      rack.replaceChildren(paragraph);
+    }
+
     function stopAllSamples() {
       activeAudios.forEach(audio => {
         audio.pause();
@@ -179,8 +287,18 @@
 
     async function loadSamples() {
       const rack = document.getElementById("rack");
+      const status = document.getElementById("status");
 
       try {
+        if (driveFolderUrl && repositoryUrl) {
+          throw new Error("Choose a Drive folder or a GitHub repository, not both.");
+        }
+
+        if (driveFolderUrl) {
+          renderSamples(await listDriveSamples(), "this Drive folder");
+          return;
+        }
+
         let owner;
         let repo;
         let requestedFolder;
@@ -260,6 +378,13 @@
           );
         }
 
+        renderSamples(files, requestedFolder || "/");
+
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+
+      function renderSamples(files, location) {
         const samples = files
           .filter(file =>
             file.type === "file" &&
@@ -278,21 +403,19 @@
             )
           );
 
-        rack.innerHTML = "";
+        rack.replaceChildren();
 
         if (samples.length === 0) {
-          rack.innerHTML =
-            `<p>No supported audio files found in ${requestedFolder || "/"}.</p>`;
+          showMessage(`No supported audio files found in ${location}.`);
           return;
         }
 
         samples.forEach(file => {
-          const label = decodeURIComponent(
-            file.name.replace(/\.[^/.]+$/, "")
-          );
+          const label = file.name.replace(/\.[^/.]+$/, "");
 
-          const audio = new Audio(file.download_url);
-          audio.preload = "auto";
+          const audio = new Audio();
+          audio.preload = driveFolderUrl ? "none" : "auto";
+          audio.src = file.download_url;
 
           activeAudios.push(audio);
 
@@ -305,6 +428,8 @@
           button.addEventListener("click", async () => {
             await requestFullscreenOnce();
 
+            status.textContent = "";
+            status.classList.remove("error");
             audio.currentTime = 0;
 
             try {
@@ -315,6 +440,19 @@
                 `Could not play ${file.name}:`,
                 error
               );
+
+              status.textContent = `Could not play ${file.name}.`;
+              status.classList.add("error");
+              if (file.view_url) {
+                status.append(" ");
+                const link = document.createElement("a");
+                link.href = file.view_url;
+                link.textContent = "Open it in Drive";
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.style.color = "inherit";
+                status.append(link, ".");
+              }
             }
           });
 
@@ -330,10 +468,6 @@
 
           rack.appendChild(button);
         });
-
-      } catch (error) {
-        rack.innerHTML =
-          `<p class="error">${error.message}</p>`;
       }
     }
 

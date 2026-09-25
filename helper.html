@@ -44,6 +44,15 @@
       margin-top: 2rem;
     }
 
+    .source-fields {
+      display: grid;
+      gap: 1rem;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
     label {
       display: grid;
       gap: 0.45rem;
@@ -56,7 +65,8 @@
       color: #999;
     }
 
-    input {
+    input,
+    select {
       width: 100%;
       border: 1px solid #444;
       border-radius: 10px;
@@ -161,7 +171,8 @@
     <h1>Launchpad URL Helper</h1>
 
     <p>
-      Enter the public GitHub repository and the optional display settings.
+      Choose a public GitHub repository or a Google Drive folder shared with
+      anyone who has its link. Visitors do not need to sign in.
       The helper will generate a properly encoded URL that you can share.
     </p>
 
@@ -180,19 +191,72 @@
       </label>
 
       <label>
-        Public GitHub repository URL
-        <span class="hint">
-          You may include a folder directly in the URL, for example
-          https://github.com/User/Repo/samples/piano
-        </span>
-        <input
-          id="repoUrl"
-          type="url"
-          placeholder="https://github.com/AdrianArtacho/launchpad-samples"
-          required
-          autocomplete="url"
-        />
+        Audio source
+        <select id="sourceType">
+          <option value="github">Public GitHub repository</option>
+          <option value="drive">Google Drive folder</option>
+        </select>
       </label>
+
+      <div id="githubFields" class="source-fields">
+        <label>
+          Public GitHub repository URL
+          <span class="hint">
+            You may include a folder, for example
+            https://github.com/User/Repo/samples/piano
+          </span>
+          <input
+            id="repoUrl"
+            type="url"
+            placeholder="https://github.com/AdrianArtacho/launchpad-samples"
+            required
+            autocomplete="url"
+          />
+        </label>
+
+        <label>
+          Folder override
+          <span class="hint">
+            Optional. This overrides any folder included in the repository URL.
+          </span>
+          <input id="folder" type="text" placeholder="samples/panoja" />
+        </label>
+
+        <label>
+          Branch
+          <span class="hint">
+            Optional. Leave empty to use the Launchpad default, usually main.
+          </span>
+          <input id="branch" type="text" placeholder="main" />
+        </label>
+      </div>
+
+      <div id="driveFields" class="source-fields" hidden>
+        <label>
+          Google Drive folder URL
+          <span class="hint">
+            Share the folder as “Anyone with the link” → “Viewer”.
+            Audio files inside inherit access from the folder.
+          </span>
+          <input
+            id="driveUrl"
+            type="url"
+            placeholder="https://drive.google.com/drive/folders/YOUR_FOLDER_ID"
+            autocomplete="url"
+          />
+        </label>
+
+        <label>
+          Google Drive API key
+          <span class="hint">
+            <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noopener noreferrer">Enable the Drive API</a>
+            and <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">create an API key</a>.
+            The key is included in the shareable URL: restrict it to the
+            Drive API and this Launchpad site. Do not enter an OAuth token.
+          </span>
+          <input id="driveKey" type="text" autocomplete="off" />
+        </label>
+      </div>
 
       <label>
         Title
@@ -203,30 +267,6 @@
           id="title"
           type="text"
           placeholder="Sample Rack"
-        />
-      </label>
-
-      <label>
-        Folder override
-        <span class="hint">
-          Optional. This overrides any folder included in the repository URL.
-        </span>
-        <input
-          id="folder"
-          type="text"
-          placeholder="samples/panoja"
-        />
-      </label>
-
-      <label>
-        Branch
-        <span class="hint">
-          Optional. Leave empty to use the Launchpad default, usually main.
-        </span>
-        <input
-          id="branch"
-          type="text"
-          placeholder="main"
         />
       </label>
     </form>
@@ -268,7 +308,12 @@
   <script>
     const form = document.getElementById("urlForm");
     const launchpadUrlInput = document.getElementById("launchpadUrl");
+    const sourceTypeInput = document.getElementById("sourceType");
+    const githubFields = document.getElementById("githubFields");
+    const driveFields = document.getElementById("driveFields");
     const repoUrlInput = document.getElementById("repoUrl");
+    const driveUrlInput = document.getElementById("driveUrl");
+    const driveKeyInput = document.getElementById("driveKey");
     const titleInput = document.getElementById("title");
     const folderInput = document.getElementById("folder");
     const branchInput = document.getElementById("branch");
@@ -324,6 +369,30 @@
       return url.toString().replace(/\/$/, "");
     }
 
+    function validateDriveUrl(value) {
+      const url = new URL(value);
+
+      if (
+        url.protocol !== "https:" ||
+        url.hostname !== "drive.google.com" ||
+        !/^\/drive\/folders\/[\w-]+\/?$/.test(url.pathname)
+      ) {
+        throw new Error("Enter a Google Drive folder sharing URL.");
+      }
+
+      return url.toString();
+    }
+
+    function updateSourceFields() {
+      const isDrive = sourceTypeInput.value === "drive";
+      githubFields.hidden = isDrive;
+      driveFields.hidden = !isDrive;
+      repoUrlInput.required = !isDrive;
+      driveUrlInput.required = isDrive;
+      driveKeyInput.required = isDrive;
+      generateUrl();
+    }
+
     function generateUrl() {
       status.textContent = "";
       status.classList.remove("error");
@@ -333,32 +402,45 @@
           launchpadUrlInput.value.trim()
         );
 
-        const repoUrl = repoUrlInput.value.trim();
+        if (sourceTypeInput.value === "drive") {
+          const driveUrl = driveUrlInput.value.trim();
+          const driveKey = driveKeyInput.value.trim();
 
-        if (!repoUrl) {
-          generatedUrlOutput.value = "";
-          openButton.href = "#";
-          return;
+          if (!driveUrl || !driveKey) {
+            generatedUrlOutput.value = "";
+            openButton.href = "#";
+            return;
+          }
+
+          launchpadUrl.searchParams.set("drive", validateDriveUrl(driveUrl));
+          launchpadUrl.searchParams.set("driveKey", driveKey);
+        } else {
+          const repoUrl = repoUrlInput.value.trim();
+
+          if (!repoUrl) {
+            generatedUrlOutput.value = "";
+            openButton.href = "#";
+            return;
+          }
+
+          launchpadUrl.searchParams.set("repo", validateGitHubUrl(repoUrl));
+
+          const folder = folderInput.value.trim();
+          const branch = branchInput.value.trim();
+
+          if (folder) {
+            launchpadUrl.searchParams.set("folder", folder);
+          }
+
+          if (branch) {
+            launchpadUrl.searchParams.set("branch", branch);
+          }
         }
 
-        const validatedRepoUrl = validateGitHubUrl(repoUrl);
-
-        launchpadUrl.searchParams.set("repo", validatedRepoUrl);
-
         const title = titleInput.value.trim();
-        const folder = folderInput.value.trim();
-        const branch = branchInput.value.trim();
 
         if (title) {
           launchpadUrl.searchParams.set("title", title);
-        }
-
-        if (folder) {
-          launchpadUrl.searchParams.set("folder", folder);
-        }
-
-        if (branch) {
-          launchpadUrl.searchParams.set("branch", branch);
         }
 
         const generatedUrl = launchpadUrl.toString();
@@ -403,6 +485,7 @@
     launchpadUrlInput.value = inferLaunchpadUrl();
 
     form.addEventListener("input", generateUrl);
+    sourceTypeInput.addEventListener("change", updateSourceFields);
     copyButton.addEventListener("click", copyGeneratedUrl);
 
     openButton.addEventListener("click", event => {
